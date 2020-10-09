@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+
 	"io"
 	"io/ioutil"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"github.com/space307/go-lmax-api"
 	"github.com/space307/go-lmax-api/account"
 	"github.com/space307/go-lmax-api/events"
+	"github.com/space307/go-lmax-api/instruments"
 	"github.com/space307/go-lmax-api/model"
 	"github.com/space307/go-lmax-api/orders"
 	"github.com/space307/go-lmax-api/positions"
@@ -81,6 +83,12 @@ func (lc *LoginClient) OnSuccess(session model.Session) {
 			logrus.Error(err)
 		}
 	}()
+
+	instruments.GetInstrumentsInfo(session, "", func(instInfo []instruments.Info) {
+		logrus.Infof("instruments : \n%+v", instInfo)
+	}, func(code int, reader io.Reader) {
+		logrus.Errorf("failed to load instruments : code %d\n%s", code, xmlfmt.FormatXML(readToStr(reader), "", "\t"))
+	})
 
 	ctx := context.Background()
 	<-ctx.Done()
