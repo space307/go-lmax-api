@@ -14,6 +14,7 @@ const (
 	AccountStateSubscription   = "account"
 	PositionsStateSubscription = "position"
 	OrdersStateSubscription    = "order"
+	HeartbeatSubscription      = "account"
 )
 
 type (

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-
 	"io"
 	"io/ioutil"
 	"os"
@@ -12,6 +11,7 @@ import (
 	"github.com/space307/go-lmax-api"
 	"github.com/space307/go-lmax-api/account"
 	"github.com/space307/go-lmax-api/events"
+	"github.com/space307/go-lmax-api/heartbeat"
 	"github.com/space307/go-lmax-api/instruments"
 	"github.com/space307/go-lmax-api/model"
 	"github.com/space307/go-lmax-api/orders"
@@ -22,6 +22,7 @@ import (
 )
 
 type LoginClient struct {
+	session model.Session
 }
 
 func readToStr(reader io.Reader) string {
@@ -33,6 +34,7 @@ func readToStr(reader io.Reader) string {
 }
 
 func (lc *LoginClient) OnSuccess(session model.Session) {
+	lc.session = session
 	logrus.Infof("app: login success:\n%v", session)
 
 	session.AddEventListener(events.AccountState, lc)
@@ -40,6 +42,7 @@ func (lc *LoginClient) OnSuccess(session model.Session) {
 	session.AddEventListener(events.Orders, lc)
 	session.AddEventListener(events.Position, lc)
 	session.AddEventListener(events.Order, lc)
+	session.AddEventListener(events.Heartbeat, lc)
 
 	if err := account.SubscribeState(session, func(reader io.Reader) {
 		logrus.Infof("account subscription : \n%s", readToStr(reader))
@@ -61,22 +64,27 @@ func (lc *LoginClient) OnSuccess(session model.Session) {
 		logrus.Error(err)
 	}
 
-	stateRequest := func() error {
-		if err := account.GetState(session, func(_ io.Reader) {}, func(code int, reader io.Reader) {
+	if err := heartbeat.SubscribeState(session, func(_ io.Reader) {}, func(code int, reader io.Reader) {
+		logrus.Errorf("heartbeat subscription : \n%s", readToStr(reader))
+	}); err != nil {
+		logrus.Error(err)
+	}
+
+	heartbeatRequest := func() error {
+		return heartbeat.PostHeartbeat(session, func() {
+			logrus.Info("heartbeat response ok")
+		}, func(code int, reader io.Reader) {
 			logrus.Errorf("state : \n%s", xmlfmt.FormatXML(readToStr(reader), "\t", "    "))
-		}); err != nil {
-			return err
-		}
-		return nil
+		}, lc.OnDisconnected)
 	}
 
 	go func() {
-		//for {
-		time.Sleep(time.Second * 3)
-		if err := stateRequest(); err != nil {
-			logrus.Error(err)
+		for {
+			time.Sleep(time.Second * 5)
+			if err := heartbeatRequest(); err != nil {
+				logrus.Error(err)
+			}
 		}
-		//}
 	}()
 	go func() {
 		if err := session.Serve(); err != nil {
@@ -108,6 +116,7 @@ func (lc *LoginClient) OnSuccess(session model.Session) {
 	}
 }
 
+// OnFailure ...
 func (lc *LoginClient) OnFailure(code int, reader io.Reader) {
 	logrus.Errorf("app: login failure <%d>:\n%s", code, readToStr(reader))
 }
@@ -118,15 +127,28 @@ func (lc *LoginClient) OnEvent(event events.Object) {
 	case events.AccountState:
 		logrus.Infof("event account: id - %d", event.(*account.StateEvent).AccountID)
 	case events.Positions:
-		logrus.Infof("event positions: len - %d", len(event.(*positions.StateEvent).Page.Positions))
+		logrus.Infof("event positions: len - %d, %+v", len(event.(*positions.StateEvent).Page.Positions), event.(*positions.StateEvent).Page.Positions)
 	case events.Orders:
 		logrus.Infof("event orders: len - %d", len(event.(*orders.StateEvent).Page.Orders))
 	case events.Position:
 		logrus.Infof("event position: id %d", event.(*positions.Event).Position.InstrumentID)
 	case events.Order:
 		logrus.Infof("event order: id %d", event.(*orders.Event).Order.InstrumentID)
+	case events.Heartbeat:
+		logrus.Infof(
+			"event heartbeat: account %d token %s",
+			event.(*heartbeat.Event).AccountID,
+			event.(*heartbeat.Event).Token)
 	default:
 		logrus.Warnf("app: unknown event %d", event.Type())
+	}
+}
+
+// OnDisconnected ...
+func (lc *LoginClient) OnDisconnected() {
+	logrus.Error("session disconnected")
+	if err := lc.session.Stop(); err != nil {
+		logrus.Error(err)
 	}
 }
 

@@ -79,7 +79,9 @@ func GetInstrumentsInfo(session model.Session, query AssetClass, onSuccess func(
 				hasMore = response.Body.HasMoreResults
 				offset = list[len(list)-1].ID
 			}
-			session.Get(request, successCallback, onFailure)
+			if err := session.Get(request, successCallback, onFailure); err != nil {
+				logrus.Error(err)
+			}
 		}
 
 		onSuccess(list)

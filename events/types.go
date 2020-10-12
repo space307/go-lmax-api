@@ -22,6 +22,9 @@ const (
 
 	// Orders ...
 	Order Type = 4
+
+	// Heartbeat ...
+	Heartbeat Type = 5
 )
 
 var (
@@ -31,6 +34,7 @@ var (
 		"orders",
 		"position",
 		"order",
+		"heartbeat",
 	}
 )
 

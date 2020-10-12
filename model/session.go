@@ -33,5 +33,6 @@ type (
 		EventsManager
 
 		Logout(request Request, success func(r io.Reader), failure func(code int, r io.Reader)) error
+		HeartbeatRequest(request Request, success func(), failure func(code int, r io.Reader), disconnected func()) error
 	}
 )

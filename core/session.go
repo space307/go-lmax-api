@@ -13,6 +13,7 @@ import (
 
 	"github.com/space307/go-lmax-api/account"
 	"github.com/space307/go-lmax-api/events"
+	"github.com/space307/go-lmax-api/heartbeat"
 	"github.com/space307/go-lmax-api/model"
 	"github.com/space307/go-lmax-api/orders"
 	"github.com/space307/go-lmax-api/positions"
@@ -85,6 +86,8 @@ func (en *eventsNotifier) Handle(raw []byte) {
 				event = &positions.Event{}
 			case events.Order:
 				event = &orders.Event{}
+			case events.Heartbeat:
+				event = &heartbeat.Event{}
 			default:
 				logrus.Warn("unknown event type")
 				continue
@@ -199,6 +202,29 @@ func (s *Session) Stream(request model.Request, h model.StreamHandler) error {
 	request.AddParam(userAgentParam, s.UserAgent())
 
 	return s.httpInvoker.Stream(request.RequestURI(), request.Header(), args, h)
+}
+
+func (s *Session) HeartbeatRequest(request model.Request, success func(), failure func(code int, r io.Reader), disconnected func()) error {
+	err := s.Post(request, func(reader io.Reader) {
+		bytes, err := ioutil.ReadAll(reader)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		var response heartbeat.Response
+		if err := xml.Unmarshal(bytes, &response); err != nil {
+			logrus.Error(err)
+			return
+		}
+		success()
+	}, func(code int, r io.Reader) {
+		if code == http.StatusForbidden {
+			disconnected()
+		} else {
+			failure(code, r)
+		}
+	})
+	return err
 }
 
 // Serve ...
