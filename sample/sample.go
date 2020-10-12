@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -88,6 +89,9 @@ func (lc *LoginClient) OnSuccess(session model.Session) {
 	}()
 	go func() {
 		if err := session.Serve(); err != nil {
+			if err == errors.New("EOF") {
+				logrus.Info("")
+			}
 			logrus.Error(err)
 		}
 	}()

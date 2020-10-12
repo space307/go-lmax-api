@@ -4,19 +4,17 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
-	"io"
-	"io/ioutil"
-	"net/http"
-	"strings"
-	"sync"
-	"time"
-
 	"github.com/space307/go-lmax-api/account"
 	"github.com/space307/go-lmax-api/events"
 	"github.com/space307/go-lmax-api/heartbeat"
 	"github.com/space307/go-lmax-api/model"
 	"github.com/space307/go-lmax-api/orders"
 	"github.com/space307/go-lmax-api/positions"
+	"io"
+	"io/ioutil"
+	"net/http"
+	"strings"
+	"sync"
 
 	"github.com/sirupsen/logrus"
 )
@@ -51,8 +49,8 @@ type (
 	}
 
 	stream struct {
-		*time.Ticker
 		sync.WaitGroup
+		stopper chan struct{}
 	}
 )
 
@@ -89,7 +87,7 @@ func (en *eventsNotifier) Handle(raw []byte) {
 			case events.Heartbeat:
 				event = &heartbeat.Event{}
 			default:
-				logrus.Warn("unknown event type")
+				logrus.Warnf("unknown event type <%s>", key)
 				continue
 			}
 			start = xml.StartElement{Name: xml.Name{Local: key}}
@@ -126,7 +124,7 @@ func NewSession(header model.Header, reader io.Reader, invoker *HttpInvoker) (mo
 	s := &Session{
 		httpInvoker: invoker,
 		en:          newEventsNotifier(),
-		stream:      &stream{Ticker: time.NewTicker(time.Millisecond * 100)},
+		stream:      &stream{stopper: make(chan struct{})},
 	}
 
 	bytes, err := ioutil.ReadAll(reader)
@@ -235,7 +233,7 @@ func (s *Session) Serve() error {
 // Stop ...
 func (s *Session) Stop() error {
 	s.httpInvoker.StopStreaming()
-	s.stream.Stop()
+	close(s.stream.stopper)
 	return nil
 }
 
@@ -249,8 +247,13 @@ func (s *Session) eventLoop(request model.Request) error {
 	defer s.stream.Done()
 
 	for {
-		if err := s.Stream(request, s.en); err != nil {
+		if err := s.Stream(request, s.en); err != nil && err != io.EOF {
 			return err
+		}
+		select {
+		case <-s.stream.stopper:
+			return nil
+		default:
 		}
 	}
 }

@@ -42,7 +42,7 @@ func (d *Decoder) Decode() ([]byte, error) {
 	if err != nil && err != io.EOF {
 		return nil, err
 	}
-	return chunk[:n], err
+	return chunk[:n], nil
 }
 
 // Stream ...
@@ -66,8 +66,7 @@ func NewStream(source *Decoder, handler model.StreamHandler) model.Stream {
 
 // Serve ...
 func (s *Stream) Serve() error {
-	go s.receive()
-	return nil
+	return s.receive()
 }
 
 // Stop ...
@@ -86,7 +85,7 @@ func (s *Stream) isStopped() bool {
 }
 
 //receive reads result from io, decodes the data and sends it to the result channel
-func (s *Stream) receive() {
+func (s *Stream) receive() error {
 
 	buffer := make([]byte, 0, oneMB)
 	lTag := len(eventsTag)
@@ -94,7 +93,7 @@ func (s *Stream) receive() {
 	defer s.source.Close()
 	for {
 		if s.isStopped() {
-			return
+			break
 		}
 
 		var chunk []byte
@@ -112,9 +111,10 @@ func (s *Stream) receive() {
 		if err == io.EOF {
 			s.handler.Handle(buffer)
 		} else if err != nil {
-			return
+			return err
 		}
 
-		buffer = buffer[:cap(buffer)]
+		buffer = buffer[:0]
 	}
+	return nil
 }

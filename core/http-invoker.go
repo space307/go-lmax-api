@@ -26,10 +26,10 @@ type (
 	HttpInvoker struct {
 		addr string
 
-		client http.Client
-		stream http.Client
+		client       http.Client
+		streamClient http.Client
 
-		closer chan struct{}
+		streamReader model.Stream
 	}
 
 	RequestParams map[string]string
@@ -49,10 +49,9 @@ func NewHttpInvoker(addr string) *HttpInvoker {
 	}
 
 	return &HttpInvoker{
-		addr:   addr,
-		client: http.Client{Timeout: defaultTimeout, Transport: tr},
-		stream: http.Client{Transport: streamTr},
-		closer: make(chan struct{}),
+		addr:         addr,
+		client:       http.Client{Timeout: defaultTimeout, Transport: tr},
+		streamClient: http.Client{Transport: streamTr},
 	}
 }
 
@@ -131,23 +130,22 @@ func (inv *HttpInvoker) Stream(uri string, header map[string]string, args io.Rea
 		req.Header.Add(k, v)
 	}
 
-	resp, err := inv.stream.Do(req)
+	resp, err := inv.streamClient.Do(req)
 	if err != nil {
 		return err
 	}
-
-	if err := inv.readStream(resp, h); err != nil {
-		return err
-	}
-	return err
+	return inv.readStream(resp, h)
 }
 
 func (inv *HttpInvoker) readStream(resp *http.Response, h model.StreamHandler) error {
 	dec := NewDecoder(resp.Body)
-	stream := NewStream(dec, h)
-	return stream.Serve()
+	inv.streamReader = NewStream(dec, h)
+	return inv.streamReader.Serve()
 }
 
+// StopStreaming ...
 func (inv *HttpInvoker) StopStreaming() {
-	close(inv.closer)
+	if inv.streamReader != nil {
+		inv.streamReader.Stop()
+	}
 }
