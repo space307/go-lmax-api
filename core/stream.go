@@ -103,7 +103,7 @@ func (s *Stream) receive() error {
 			buffer = append(buffer, chunk...)
 
 			end := len(buffer)
-			if string(buffer[end-lTag:end]) == eventsTag {
+			if end < lTag || string(buffer[end-lTag:end]) == eventsTag {
 				err = io.EOF
 			}
 		}
