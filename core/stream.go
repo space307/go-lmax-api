@@ -23,6 +23,10 @@ type (
 
 var EOFMsg = errors.New("eof")
 
+const length = 256 * 1024
+
+var heap = make([]byte, length)
+
 // NewDecoder ...
 func NewDecoder(r io.ReadCloser) *Decoder {
 	return &Decoder{r: r}
@@ -35,8 +39,7 @@ func (d *Decoder) Close() error {
 
 // Decode ...
 func (d *Decoder) Decode() ([]byte, error) {
-	const length = 256 * 1024
-	chunk := make([]byte, length)
+	chunk := heap
 	n, err := d.r.Read(chunk)
 	_ = n
 	if err != nil && err != io.EOF {
@@ -100,6 +103,9 @@ func (s *Stream) receive() error {
 		var err error
 		for err == nil {
 			chunk, err = s.source.Decode()
+			if err != nil {
+				continue
+			}
 			buffer = append(buffer, chunk...)
 
 			end := len(buffer)
